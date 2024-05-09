@@ -1,0 +1,103 @@
+import pandas as pd
+import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+from mlxtend.preprocessing import TransactionEncoder
+from wordcloud import WordCloud
+
+
+df = pd.read_csv('benefits.csv')
+print(df.head())
+print('The number of responses:', len(df))
+
+
+#Apriori algorithm
+benefits = []
+for i in range(0,len(df)):
+   benefits.append([str(df.values[i,j]) for j in range(0,4) if str(df.values[i,j])!='0'])
+print(benefits)
+
+
+encoder = TransactionEncoder()
+encoded_array = encoder.fit(benefits).transform(benefits)
+df_itemsets = pd.DataFrame(encoded_array, columns=encoder.columns_)
+print(df_itemsets)
+
+
+print('The number of responses:', len(benefits))
+print('The number of unique items:', len(set(sum(benefits, []))))
+
+
+from mlxtend.frequent_patterns import apriori
+from mlxtend.frequent_patterns import association_rules
+frequent_itemsets = apriori(df_itemsets, min_support=0.1, use_colnames=True)
+print(frequent_itemsets)
+
+
+frequent_itemsets['length'] = frequent_itemsets['itemsets'].apply(lambda itemsets: len(itemsets))
+print(frequent_itemsets[frequent_itemsets['length'] >= 2])
+
+
+rules = association_rules(frequent_itemsets, metric='confidence', min_threshold=0.5)
+print(rules.iloc[:,0:7])
+
+
+rules_plot =pd.DataFrame()
+rules_plot['antecedents'] = rules['antecedents'].apply(lambda x: ','.join(list(x)))
+rules_plot['consequents'] = rules['consequents'].apply(lambda x: ','.join(list(x)))
+rules_plot['lift'] = rules['lift'].apply(lambda x: round(x, 2))
+print(rules_plot)
+
+
+pivot =rules_plot.pivot(index = 'antecedents', columns = 'consequents', values = 'lift')
+print(pivot)
+
+
+antecedents = list(pivot.index.values)
+consequents = list(pivot.columns)
+pivot = pivot.to_numpy()
+
+
+#Lift Metrics (Heatmap)
+fig, ax = plt.subplots(figsize=(10,12))
+im = ax.imshow(pivot, cmap='Reds')
+ax.set_xticks(np.arange(len(consequents)))
+ax.set_yticks(np.arange(len(antecedents)))
+ax.set_xticklabels(consequents)
+ax.set_yticklabels(antecedents)
+plt.setp(ax.get_xticklabels(), rotation=45, ha='right', rotation_mode='anchor')
+for i in range(len(antecedents)):
+   for j in range(len(consequents)):
+       if not np.isnan(pivot[i, j]):
+           text = ax.text(j, i, pivot[i, j], ha='center', va='center')
+ax.set_title("Lift Metrics for frequent itemsets")
+fig.tight_layout()
+plt.savefig('LiftMetrics.png')
+plt.show()
+
+
+benefits_antecedent = rules[rules['antecedents'] == {'perf'}][['consequents', 'confidence']].sort_values('confidence', ascending=False)
+benefits_consequents = [list(item) for item in benefits_antecedent.iloc[0:3:,]['consequents']]
+
+
+item = 'perf'
+print('These are the non-negotiable:', benefits_consequents,
+     '\nTherefore, this indicates that the interns here in this class consider not just SALARY but',benefits_consequents, 'as benefits that are NON-NEGOTIABLE when applying for a job')
+
+
+#Visualization of insights
+benefits_flat = [benefit for sublist in benefits_consequents for benefit in sublist]
+
+
+text = ' '.join(benefits_flat)
+
+
+wordcloud = WordCloud(width=800, height=400, background_color='white', prefer_horizontal=1).generate(text)
+
+
+plt.figure(figsize=(10, 8))
+plt.imshow(wordcloud, interpolation='bilinear')
+plt.title('Non-Negotiable Benefits', fontsize=20)
+plt.axis('off')
+plt.savefig('benefits.png')
+plt.show()
